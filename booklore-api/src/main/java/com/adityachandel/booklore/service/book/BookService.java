@@ -1,5 +1,5 @@
 package com.adityachandel.booklore.service.book;
-
+import com.adityachandel.booklore.domain.book.BookDomainService;
 import com.adityachandel.booklore.config.security.service.AuthenticationService;
 import com.adityachandel.booklore.exception.ApiError;
 import com.adityachandel.booklore.mapper.BookMapper;
@@ -15,7 +15,6 @@ import com.adityachandel.booklore.model.entity.UserBookProgressEntity;
 import com.adityachandel.booklore.model.enums.BookFileType;
 import com.adityachandel.booklore.model.enums.BookFileType;
 import com.adityachandel.booklore.repository.*;
-import com.adityachandel.booklore.repository.BookFileRepository;
 import com.adityachandel.booklore.service.monitoring.MonitoringRegistrationService;
 import com.adityachandel.booklore.service.progress.ReadingProgressService;
 import com.adityachandel.booklore.util.FileService;
@@ -47,7 +46,7 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 @Service
 public class BookService {
-
+    private final BookDomainService bookDomainService;
     private final BookRepository bookRepository;
     private final BookFileRepository bookFileRepository;
     private final PdfViewerPreferencesRepository pdfViewerPreferencesRepository;
@@ -91,7 +90,8 @@ public class BookService {
                     progressMap.get(book.getId()),
                     fileProgressMap.get(book.getId())
             );
-            book.setShelves(filterShelvesByUserId(book.getShelves(), user.getId()));
+            book.setShelves(bookDomainService.filterShelvesForUser(book.getShelves(), user.getId()));
+
         });
 
         return books;
@@ -133,7 +133,7 @@ public class BookService {
                 .get(bookId);
 
         Book book = bookMapper.toBook(bookEntity);
-        book.setShelves(filterShelvesByUserId(book.getShelves(), user.getId()));
+        book.setShelves(bookDomainService.filterShelvesForUser(book.getShelves(), user.getId()));
         readingProgressService.enrichBookWithProgress(book, userProgress, fileProgress);
 
         if (!withDescription) {
@@ -412,13 +412,6 @@ public class BookService {
                 break;
             }
         }
-    }
-
-    public Set<Shelf> filterShelvesByUserId(Set<Shelf> shelves, Long userId) {
-        if (shelves == null) return Collections.emptySet();
-        return shelves.stream()
-                .filter(shelf -> userId.equals(shelf.getUserId()))
-                .collect(Collectors.toSet());
     }
 
 }

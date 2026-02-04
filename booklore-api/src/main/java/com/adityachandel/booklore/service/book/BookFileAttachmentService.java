@@ -1,6 +1,7 @@
 package com.adityachandel.booklore.service.book;
 
 import com.adityachandel.booklore.config.security.service.AuthenticationService;
+import com.adityachandel.booklore.domain.book.BookDomainService;
 import com.adityachandel.booklore.exception.ApiError;
 import com.adityachandel.booklore.mapper.BookMapper;
 import com.adityachandel.booklore.model.dto.Book;
@@ -34,6 +35,7 @@ import java.util.stream.Collectors;
 public class BookFileAttachmentService {
 
     private final BookRepository bookRepository;
+    private final BookDomainService bookDomainService;
     private final UserBookProgressRepository userBookProgressRepository;
     private final AuthenticationService authenticationService;
     private final ReadingProgressService readingProgressService;
@@ -347,7 +349,8 @@ public class BookFileAttachmentService {
                 .get(bookId);
 
         Book book = bookMapper.toBook(refreshedTarget);
-        book.setShelves(bookService.filterShelvesByUserId(book.getShelves(), user.getId()));
+        book.setShelves(
+        bookDomainService.filterShelvesForUser(book.getShelves(), user.getId()));
         readingProgressService.enrichBookWithProgress(book, userProgress, fileProgress);
 
         return book;

@@ -1,6 +1,8 @@
 package com.adityachandel.booklore.service.book;
 
+import com.adityachandel.booklore.domain.book.BookDomainService;
 import com.adityachandel.booklore.config.security.service.AuthenticationService;
+import com.adityachandel.booklore.domain.book.BookDomainService;
 import com.adityachandel.booklore.exception.ApiError;
 import com.adityachandel.booklore.mapper.BookMapper;
 import com.adityachandel.booklore.model.dto.*;
@@ -29,6 +31,8 @@ import java.util.stream.Collectors;
 public class BookUpdateService {
 
     private final BookRepository bookRepository;
+    private final BookDomainService bookDomainService;
+
     private final PdfViewerPreferencesRepository pdfViewerPreferencesRepository;
     private final CbxViewerPreferencesRepository cbxViewerPreferencesRepository;
     private final NewPdfViewerPreferencesRepository newPdfViewerPreferencesRepository;
@@ -311,7 +315,7 @@ public class BookUpdateService {
                            Map<Long, UserBookProgressEntity> progressMap,
                            Map<Long, UserBookFileProgressEntity> fileProgressMap) {
         Book book = bookMapper.toBook(bookEntity);
-        book.setShelves(filterShelvesByUserId(book.getShelves(), userId));
+        book.setShelves(bookDomainService.filterShelvesForUser(book.getShelves(), userId));
         readingProgressService.enrichBookWithProgress(
                 book,
                 progressMap.get(bookEntity.getId()),
@@ -358,12 +362,5 @@ public class BookUpdateService {
                         .personalRating(rating)
                         .build())
                 .collect(Collectors.toList());
-    }
-
-    private Set<Shelf> filterShelvesByUserId(Set<Shelf> shelves, Long userId) {
-        if (shelves == null) return Collections.emptySet();
-        return shelves.stream()
-                .filter(shelf -> userId.equals(shelf.getUserId()))
-                .collect(Collectors.toSet());
     }
 }
