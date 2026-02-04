@@ -1,5 +1,8 @@
 package com.adityachandel.booklore.service.book;
+
+import com.adityachandel.booklore.domain.book.viewer.BookViewerSettingsResolver;
 import com.adityachandel.booklore.domain.book.BookDomainService;
+import com.adityachandel.booklore.domain.book.viewer.BookViewerSettingsResolver;
 import com.adityachandel.booklore.config.security.service.AuthenticationService;
 import com.adityachandel.booklore.exception.ApiError;
 import com.adityachandel.booklore.mapper.BookMapper;
@@ -46,6 +49,7 @@ import java.util.stream.Collectors;
 @AllArgsConstructor
 @Service
 public class BookService {
+    private final BookViewerSettingsResolver bookViewerSettingsResolver;
     private final BookDomainService bookDomainService;
     private final BookRepository bookRepository;
     private final BookFileRepository bookFileRepository;
@@ -142,70 +146,15 @@ public class BookService {
 
         return book;
     }
-
-
+    
     public BookViewerSettings getBookViewerSetting(long bookId, long bookFileId) {
-        BookEntity bookEntity = bookRepository.findByIdWithBookFiles(bookId).orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
+        BookEntity bookEntity = bookRepository.findByIdWithBookFiles(bookId)
+                .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
+
         BookLoreUser user = authenticationService.getAuthenticatedUser();
 
-        BookViewerSettings.BookViewerSettingsBuilder settingsBuilder = BookViewerSettings.builder();
-
-        BookFileEntity bookFile = bookEntity.getBookFiles().stream()
-                .filter(bf -> bf.getId().equals(bookFileId))
-                .findFirst()
-                .orElseThrow(() -> ApiError.FILE_NOT_FOUND.createException("Book file not found: " + bookFileId));
-        BookFileType bookType = bookFile.getBookType();
-        if (bookType == BookFileType.EPUB || bookType == BookFileType.FB2
-                || bookType == BookFileType.MOBI
-                || bookType == BookFileType.AZW3) {
-            ebookViewerPreferencesRepository.findByBookIdAndUserId(bookId, user.getId())
-                    .ifPresent(epubPref -> settingsBuilder.ebookSettings(EbookViewerPreferences.builder()
-                            .bookId(bookId)
-                            .userId(user.getId())
-                            .fontFamily(epubPref.getFontFamily())
-                            .fontSize(epubPref.getFontSize())
-                            .gap(epubPref.getGap())
-                            .hyphenate(epubPref.getHyphenate())
-                            .isDark(epubPref.getIsDark())
-                            .justify(epubPref.getJustify())
-                            .lineHeight(epubPref.getLineHeight())
-                            .maxBlockSize(epubPref.getMaxBlockSize())
-                            .maxColumnCount(epubPref.getMaxColumnCount())
-                            .maxInlineSize(epubPref.getMaxInlineSize())
-                            .theme(epubPref.getTheme())
-                            .flow(epubPref.getFlow())
-                            .build()));
-        } else if (bookType == BookFileType.PDF) {
-            pdfViewerPreferencesRepository.findByBookIdAndUserId(bookId, user.getId())
-                    .ifPresent(pdfPref -> settingsBuilder.pdfSettings(PdfViewerPreferences.builder()
-                            .bookId(bookId)
-                            .zoom(pdfPref.getZoom())
-                            .spread(pdfPref.getSpread())
-                            .build()));
-            newPdfViewerPreferencesRepository.findByBookIdAndUserId(bookId, user.getId())
-                    .ifPresent(pdfPref -> settingsBuilder.newPdfSettings(NewPdfViewerPreferences.builder()
-                            .bookId(bookId)
-                            .pageViewMode(pdfPref.getPageViewMode())
-                            .pageSpread(pdfPref.getPageSpread())
-                            .fitMode(pdfPref.getFitMode())
-                            .scrollMode(pdfPref.getScrollMode())
-                            .backgroundColor(pdfPref.getBackgroundColor())
-                            .build()));
-        } else if (bookType == BookFileType.CBX) {
-            cbxViewerPreferencesRepository.findByBookIdAndUserId(bookId, user.getId())
-                    .ifPresent(cbxPref -> settingsBuilder.cbxSettings(CbxViewerPreferences.builder()
-                            .bookId(bookId)
-                            .pageViewMode(cbxPref.getPageViewMode())
-                            .pageSpread(cbxPref.getPageSpread())
-                            .fitMode(cbxPref.getFitMode())
-                            .scrollMode(cbxPref.getScrollMode())
-                            .backgroundColor(cbxPref.getBackgroundColor())
-                            .build()));
-        } else {
-            throw ApiError.UNSUPPORTED_BOOK_TYPE.createException();
-        }
-        return settingsBuilder.build();
-    }
+        return bookViewerSettingsResolver.resolve(bookEntity, bookFileId, user.getId());
+    }    
 
     public void updateBookViewerSetting(long bookId, BookViewerSettings bookViewerSettings) {
         bookUpdateService.updateBookViewerSetting(bookId, bookViewerSettings);
