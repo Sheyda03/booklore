@@ -1,6 +1,8 @@
 package com.adityachandel.booklore.service.book;
 
+import com.adityachandel.booklore.domain.book.viewer.BookViewerSettingsResolver;
 import com.adityachandel.booklore.domain.book.BookDomainService;
+import com.adityachandel.booklore.domain.book.viewer.BookViewerSettingsResolver;
 import com.adityachandel.booklore.config.security.service.AuthenticationService;
 import com.adityachandel.booklore.domain.book.BookDomainService;
 import com.adityachandel.booklore.exception.ApiError;
@@ -32,6 +34,7 @@ public class BookUpdateService {
 
     private final BookRepository bookRepository;
     private final BookDomainService bookDomainService;
+    private final BookViewerSettingsResolver bookViewerSettingsResolver;
 
     private final PdfViewerPreferencesRepository pdfViewerPreferencesRepository;
     private final CbxViewerPreferencesRepository cbxViewerPreferencesRepository;
@@ -46,19 +49,18 @@ public class BookUpdateService {
     private final EbookViewerPreferenceRepository ebookViewerPreferenceRepository;
 
     public void updateBookViewerSetting(long bookId, BookViewerSettings bookViewerSettings) {
-        BookEntity book = bookRepository.findByIdWithBookFiles(bookId).orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
+        BookEntity book = bookRepository.findByIdWithBookFiles(bookId)
+                .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
         BookLoreUser user = authenticationService.getAuthenticatedUser();
         var primaryFile = book.getPrimaryBookFile();
+                
         if (primaryFile == null || primaryFile.getBookType() == null) {
             throw ApiError.UNSUPPORTED_BOOK_TYPE.createException();
         }
-        switch (primaryFile.getBookType()) {
-            case PDF -> updatePdfViewerSettings(bookId, user.getId(), bookViewerSettings);
-            case EPUB, FB2, MOBI, AZW3 -> updateEbookViewerSettings(bookId, user.getId(), bookViewerSettings);
-            case CBX -> updateCbxViewerSettings(bookId, user.getId(), bookViewerSettings);
-            default -> throw ApiError.UNSUPPORTED_BOOK_TYPE.createException();
-        }
+
+        bookViewerSettingsResolver.update(book, user.getId(), bookViewerSettings);
     }
+
 
     @Transactional
     public List<BookStatusUpdateResponse> updateReadStatus(List<Long> bookIds, String status) {

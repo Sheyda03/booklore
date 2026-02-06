@@ -1,5 +1,6 @@
 package com.adityachandel.booklore.domain.book.viewer;
 
+
 import com.adityachandel.booklore.model.dto.BookViewerSettings;
 import com.adityachandel.booklore.model.entity.BookEntity;
 import com.adityachandel.booklore.model.enums.BookFileType;

@@ -350,8 +350,7 @@ public class BookFileAttachmentService {
 
         Book book = bookMapper.toBook(refreshedTarget);
         book.setShelves(
-        bookDomainService.filterShelvesForUser(book.getShelves(), user.getId()));
-        readingProgressService.enrichBookWithProgress(book, userProgress, fileProgress);
+        bookDomainService.filterShelvesForUser(book.getShelves(), user.getId()));        readingProgressService.enrichBookWithProgress(book, userProgress, fileProgress);
 
         return book;
     }

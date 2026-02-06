@@ -356,7 +356,7 @@ public class BookService {
                     break;
                 }
                 dir = dir.getParent();
-            } else {
+            } else {                
                 log.debug("Directory {} contains important files. Stopping cleanup.", dir);
                 break;
             }
