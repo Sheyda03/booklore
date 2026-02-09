@@ -3,6 +3,8 @@ import org.springframework.stereotype.Service;
 import lombok.RequiredArgsConstructor;
 
 import com.adityachandel.booklore.model.entity.BookEntity;
+import com.adityachandel.booklore.model.entity.NewPdfViewerPreferencesEntity;
+import com.adityachandel.booklore.model.entity.PdfViewerPreferencesEntity;
 import com.adityachandel.booklore.model.enums.BookFileType;
 import com.adityachandel.booklore.model.dto.BookViewerSettings;
 import com.adityachandel.booklore.model.dto.PdfViewerPreferences;
@@ -54,7 +56,41 @@ public class PdfViewerSettingsStrategy implements BookViewerSettingsStrategy {
 
     @Override
     public void updateSettings(BookEntity book, Long userId, BookViewerSettings settings) {
-        
+        long bookId = book.getId();
+
+        if (settings.getPdfSettings() != null) {
+            PdfViewerPreferencesEntity prefs = pdfRepo
+                    .findByBookIdAndUserId(bookId, userId)
+                    .orElseGet(() -> pdfRepo.save(
+                            PdfViewerPreferencesEntity.builder()
+                                    .bookId(bookId)
+                                    .userId(userId)
+                                    .build()
+                    ));
+
+            PdfViewerPreferences pdfSettings = settings.getPdfSettings();
+            prefs.setZoom(pdfSettings.getZoom());
+            prefs.setSpread(pdfSettings.getSpread());
+            pdfRepo.save(prefs);
+        }
+
+        if (settings.getNewPdfSettings() != null) {
+            NewPdfViewerPreferencesEntity prefs = newPdfRepo
+                    .findByBookIdAndUserId(bookId, userId)
+                    .orElseGet(() -> newPdfRepo.save(
+                            NewPdfViewerPreferencesEntity.builder()
+                                    .bookId(bookId)
+                                    .userId(userId)
+                                    .build()
+                    ));
+
+            NewPdfViewerPreferences pdfSettings = settings.getNewPdfSettings();
+            prefs.setPageSpread(pdfSettings.getPageSpread());
+            prefs.setPageViewMode(pdfSettings.getPageViewMode());
+            prefs.setFitMode(pdfSettings.getFitMode());
+            prefs.setScrollMode(pdfSettings.getScrollMode());
+            prefs.setBackgroundColor(pdfSettings.getBackgroundColor());
+            newPdfRepo.save(prefs);
+        }
     }
 }
-
