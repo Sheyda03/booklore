@@ -22,7 +22,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Set;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -34,7 +33,7 @@ import java.util.stream.Collectors;
 @RequiredArgsConstructor
 @Service
 public class BookFileAttachmentService {
-
+    private final BookFileAttachmentValidator bookFileAttachmentValidator;
     private final BookRepository bookRepository;
     private final BookDomainService bookDomainService;
     private final UserBookProgressRepository userBookProgressRepository;
@@ -47,66 +46,12 @@ public class BookFileAttachmentService {
 
     @Transactional
     public Book attachBookFiles(Long targetBookId, List<Long> sourceBookIds, boolean deleteSourceBooks) {
-        BookEntity targetBook = bookRepository.findByIdWithBookFiles(targetBookId)
-                .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(targetBookId));
+        BookFileAttachmentValidationResult validationResult =
+        bookFileAttachmentValidator.validate(targetBookId, sourceBookIds);
 
-        // Validate and deduplicate source book IDs
-        Set<Long> uniqueSourceBookIds = new LinkedHashSet<>(sourceBookIds); // Preserves order, removes duplicates
-        if (uniqueSourceBookIds.contains(targetBookId)) {
-            throw ApiError.GENERIC_BAD_REQUEST.createException("Cannot attach a book to itself");
-        }
-
-        // Load all source books upfront to avoid Hibernate auto-flush issues when loading inside loop
-        List<BookEntity> sourceBooks = new ArrayList<>();
-        for (Long sourceBookId : uniqueSourceBookIds) {
-            BookEntity sourceBook = bookRepository.findByIdWithBookFiles(sourceBookId)
-                    .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(sourceBookId));
-            sourceBooks.add(sourceBook);
-        }
-
-        // === VALIDATION PHASE - Do all validation BEFORE any file operations ===
-
-        // Validate target has a primary file
-        BookFileEntity targetPrimaryFile = targetBook.getBookFiles().stream()
-                .filter(BookFileEntity::isBookFormat)
-                .findFirst()
-                .orElseThrow(() -> ApiError.GENERIC_BAD_REQUEST.createException("Target book has no primary file"));
-
-        // Validate all source books upfront
-        for (BookEntity sourceBook : sourceBooks) {
-            // Validate same library
-            if (!targetBook.getLibrary().getId().equals(sourceBook.getLibrary().getId())) {
-                throw ApiError.GENERIC_BAD_REQUEST.createException("Source book " + sourceBook.getId() + " must be in the same library as target");
-            }
-
-            // Validate source has exactly 1 book format file
-            List<BookFileEntity> sourceBookFiles = sourceBook.getBookFiles().stream()
-                    .filter(BookFileEntity::isBookFormat)
-                    .collect(Collectors.toList());
-
-            if (sourceBookFiles.isEmpty()) {
-                throw ApiError.GENERIC_BAD_REQUEST.createException("Source book " + sourceBook.getId() + " has no book format files to attach");
-            }
-
-            if (sourceBookFiles.size() > 1) {
-                throw ApiError.GENERIC_BAD_REQUEST.createException("Source book " + sourceBook.getId() + " has multiple book format files. Only single-file books can be attached.");
-            }
-
-            BookFileEntity fileToMove = sourceBookFiles.get(0);
-
-            // Validate not folder-based
-            if (fileToMove.isFolderBased()) {
-                throw ApiError.GENERIC_BAD_REQUEST.createException("Source book " + sourceBook.getId() + " is a folder-based audiobook. Folder-based books cannot be attached.");
-            }
-
-            // Validate source file exists
-            Path sourceFilePath = fileToMove.getFullFilePath();
-            if (!Files.exists(sourceFilePath)) {
-                throw ApiError.GENERIC_BAD_REQUEST.createException(
-                        "Source file not found at expected location: " + sourceFilePath +
-                        ". The file may have been moved, deleted, or the database record is out of sync.");
-            }
-        }
+        BookEntity targetBook = validationResult.targetBook();
+        List<BookEntity> sourceBooks = validationResult.sourceBooks();
+        BookFileEntity targetPrimaryFile = validationResult.targetPrimaryFile();
 
         // === SETUP PHASE - Calculate paths and naming ===
 
