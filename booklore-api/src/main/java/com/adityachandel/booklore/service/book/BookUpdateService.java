@@ -53,14 +53,13 @@ public class BookUpdateService {
                 .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
         BookLoreUser user = authenticationService.getAuthenticatedUser();
         var primaryFile = book.getPrimaryBookFile();
-                
+
         if (primaryFile == null || primaryFile.getBookType() == null) {
             throw ApiError.UNSUPPORTED_BOOK_TYPE.createException();
         }
 
         bookViewerSettingsResolver.update(book, user.getId(), bookViewerSettings);
     }
-
 
     @Transactional
     public List<BookStatusUpdateResponse> updateReadStatus(List<Long> bookIds, String status) {
@@ -119,106 +118,6 @@ public class BookUpdateService {
         bookRepository.saveAll(bookEntities);
 
         return buildBooksWithProgress(bookEntities, user.getId());
-    }
-
-    private void updatePdfViewerSettings(long bookId, Long userId, BookViewerSettings settings) {
-        if (settings.getPdfSettings() != null) {
-            PdfViewerPreferencesEntity prefs = findOrCreatePdfPreferences(bookId, userId);
-            PdfViewerPreferences pdfSettings = settings.getPdfSettings();
-            prefs.setZoom(pdfSettings.getZoom());
-            prefs.setSpread(pdfSettings.getSpread());
-            pdfViewerPreferencesRepository.save(prefs);
-        }
-
-        if (settings.getNewPdfSettings() != null) {
-            NewPdfViewerPreferencesEntity prefs = findOrCreateNewPdfPreferences(bookId, userId);
-            NewPdfViewerPreferences pdfSettings = settings.getNewPdfSettings();
-            prefs.setPageSpread(pdfSettings.getPageSpread());
-            prefs.setPageViewMode(pdfSettings.getPageViewMode());
-            prefs.setFitMode(pdfSettings.getFitMode());
-            prefs.setScrollMode(pdfSettings.getScrollMode());
-            prefs.setBackgroundColor(pdfSettings.getBackgroundColor());
-            newPdfViewerPreferencesRepository.save(prefs);
-        }
-    }
-
-    private void updateEbookViewerSettings(long bookId, Long userId, BookViewerSettings settings) {
-        EbookViewerPreferenceEntity prefs = findOrCreateEbookPreferences(bookId, userId);
-        EbookViewerPreferences epubSettings = settings.getEbookSettings();
-
-        prefs.setUserId(userId);
-        prefs.setBookId(bookId);
-        prefs.setFontFamily(epubSettings.getFontFamily());
-        prefs.setFontSize(epubSettings.getFontSize());
-        prefs.setGap(epubSettings.getGap());
-        prefs.setHyphenate(epubSettings.getHyphenate());
-        prefs.setIsDark(epubSettings.getIsDark());
-        prefs.setJustify(epubSettings.getJustify());
-        prefs.setLineHeight(epubSettings.getLineHeight());
-        prefs.setMaxBlockSize(epubSettings.getMaxBlockSize());
-        prefs.setMaxColumnCount(epubSettings.getMaxColumnCount());
-        prefs.setMaxInlineSize(epubSettings.getMaxInlineSize());
-        prefs.setTheme(epubSettings.getTheme());
-        prefs.setFlow(epubSettings.getFlow());
-
-        ebookViewerPreferenceRepository.save(prefs);
-    }
-
-    private void updateCbxViewerSettings(long bookId, Long userId, BookViewerSettings settings) {
-        CbxViewerPreferencesEntity prefs = findOrCreateCbxPreferences(bookId, userId);
-        CbxViewerPreferences cbxSettings = settings.getCbxSettings();
-
-        prefs.setPageSpread(cbxSettings.getPageSpread());
-        prefs.setPageViewMode(cbxSettings.getPageViewMode());
-        prefs.setFitMode(cbxSettings.getFitMode());
-        prefs.setScrollMode(cbxSettings.getScrollMode());
-        prefs.setBackgroundColor(cbxSettings.getBackgroundColor());
-
-        cbxViewerPreferencesRepository.save(prefs);
-    }
-
-    private PdfViewerPreferencesEntity findOrCreatePdfPreferences(long bookId, Long userId) {
-        return pdfViewerPreferencesRepository
-                .findByBookIdAndUserId(bookId, userId)
-                .orElseGet(() -> pdfViewerPreferencesRepository.save(
-                        PdfViewerPreferencesEntity.builder()
-                                .bookId(bookId)
-                                .userId(userId)
-                                .build()
-                ));
-    }
-
-    private NewPdfViewerPreferencesEntity findOrCreateNewPdfPreferences(long bookId, Long userId) {
-        return newPdfViewerPreferencesRepository
-                .findByBookIdAndUserId(bookId, userId)
-                .orElseGet(() -> newPdfViewerPreferencesRepository.save(
-                        NewPdfViewerPreferencesEntity.builder()
-                                .bookId(bookId)
-                                .userId(userId)
-                                .build()
-                ));
-    }
-
-    private EbookViewerPreferenceEntity findOrCreateEbookPreferences(long bookId, Long userId) {
-        return ebookViewerPreferenceRepository
-                .findByBookIdAndUserId(bookId, userId)
-                .orElseGet(() -> ebookViewerPreferenceRepository.save(
-                        EbookViewerPreferenceEntity.builder()
-                                .bookId(bookId)
-                                .userId(userId)
-                                .build()
-                ));
-    }
-
-    private CbxViewerPreferencesEntity findOrCreateCbxPreferences(long bookId, Long userId) {
-        return cbxViewerPreferencesRepository
-                .findByBookIdAndUserId(bookId, userId)
-                .orElseGet(() -> cbxViewerPreferencesRepository.save(
-                        CbxViewerPreferencesEntity.builder()
-                                .bookId(bookId)
-                                .userId(userId)
-                                .build()
-                ));
     }
 
     private void updateExistingProgress(Long userId, Set<Long> bookIds, ReadStatus status, Instant now, Instant dateFinished) {
