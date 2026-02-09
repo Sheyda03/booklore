@@ -45,10 +45,9 @@ import java.util.stream.Collectors;
 @Service
 public class BookService {
     private final BookViewerSettingsResolver bookViewerSettingsResolver;
-    private final BookDomainService bookDomainService;
+    
     private final BookRepository bookRepository;
     private final FileService fileService;
-    private final BookMapper bookMapper;
     private final UserBookProgressRepository userBookProgressRepository;
     private final AuthenticationService authenticationService;
     private final BookQueryService bookQueryService;
@@ -56,79 +55,98 @@ public class BookService {
     private final BookDownloadService bookDownloadService;
     private final BookUpdateService bookUpdateService;
     private final BookFileCleanupService bookFileCleanupService;
-
+    private final BookAssembler bookAssembler;
 
     public List<Book> getBookDTOs(boolean includeDescription) {
         BookLoreUser user = authenticationService.getAuthenticatedUser();
         boolean isAdmin = user.getPermissions().isAdmin();
 
-        List<Book> books = isAdmin
-                ? bookQueryService.getAllBooks(includeDescription)
-                : bookQueryService.getAllBooksByLibraryIds(
-                user.getAssignedLibraries().stream()
-                        .map(Library::getId)
-                        .collect(Collectors.toSet()),
-                includeDescription,
-                user.getId()
-        );
+        List<BookEntity> bookEntities = isAdmin
+                ? bookQueryService.getAllBookEntities(includeDescription)
+                : bookQueryService.getAllBookEntitiesByLibraryIds(
+                        user.getAssignedLibraries().stream()
+                                .map(Library::getId)
+                                .collect(Collectors.toSet())
+                );
 
-        Set<Long> bookIds = books.stream().map(Book::getId).collect(Collectors.toSet());
+        Set<Long> bookIds = bookEntities.stream()
+                .map(BookEntity::getId)
+                .collect(Collectors.toSet());
+
         Map<Long, UserBookProgressEntity> progressMap =
                 readingProgressService.fetchUserProgress(user.getId(), bookIds);
+
         Map<Long, UserBookFileProgressEntity> fileProgressMap =
                 readingProgressService.fetchUserFileProgress(user.getId(), bookIds);
 
-        books.forEach(book -> {
-            readingProgressService.enrichBookWithProgress(
-                    book,
-                    progressMap.get(book.getId()),
-                    fileProgressMap.get(book.getId())
-            );
-            book.setShelves(bookDomainService.filterShelvesForUser(book.getShelves(), user.getId()));
-
-        });
-
-        return books;
+        return bookEntities.stream()
+                .map(entity -> bookAssembler.assemble(
+                        entity,
+                        user.getId(),
+                        progressMap.get(entity.getId()),
+                        fileProgressMap.get(entity.getId())
+                ))
+                .peek(book -> {
+                    if (!includeDescription) {
+                        book.getMetadata().setDescription(null);
+                    }
+                })
+                .collect(Collectors.toList());
     }
+
 
     public List<Book> getBooksByIds(Set<Long> bookIds, boolean withDescription) {
         BookLoreUser user = authenticationService.getAuthenticatedUser();
 
-        List<BookEntity> bookEntities = bookQueryService.findAllWithMetadataByIds(bookIds);
-        Set<Long> entityIds = bookEntities.stream().map(BookEntity::getId).collect(Collectors.toSet());
+        List<BookEntity> bookEntities =
+                bookQueryService.findAllWithMetadataByIds(bookIds);
+
+        Set<Long> entityIds = bookEntities.stream()
+                .map(BookEntity::getId)
+                .collect(Collectors.toSet());
 
         Map<Long, UserBookProgressEntity> progressMap =
                 readingProgressService.fetchUserProgress(user.getId(), entityIds);
+
         Map<Long, UserBookFileProgressEntity> fileProgressMap =
                 readingProgressService.fetchUserFileProgress(user.getId(), entityIds);
 
-        return bookEntities.stream().map(bookEntity -> {
-            Book book = bookMapper.toBook(bookEntity);
-            if (!withDescription) book.getMetadata().setDescription(null);
-            readingProgressService.enrichBookWithProgress(
-                    book,
-                    progressMap.get(bookEntity.getId()),
-                    fileProgressMap.get(bookEntity.getId())
-            );
-            return book;
-        }).collect(Collectors.toList());
+        return bookEntities.stream()
+                .map(entity -> bookAssembler.assemble(
+                        entity,
+                        user.getId(),
+                        progressMap.get(entity.getId()),
+                        fileProgressMap.get(entity.getId())
+                ))
+                .peek(book -> {
+                    if (!withDescription) {
+                        book.getMetadata().setDescription(null);
+                    }
+                })
+                .collect(Collectors.toList());
     }
 
     public Book getBook(long bookId, boolean withDescription) {
         BookLoreUser user = authenticationService.getAuthenticatedUser();
-        BookEntity bookEntity = bookRepository.findByIdWithBookFiles(bookId).orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
 
-        UserBookProgressEntity userProgress = userBookProgressRepository.findByUserIdAndBookId(user.getId(), bookId)
-                .orElse(new UserBookProgressEntity());
+        BookEntity bookEntity = bookRepository.findByIdWithBookFiles(bookId)
+                .orElseThrow(() -> ApiError.BOOK_NOT_FOUND.createException(bookId));
+
+        UserBookProgressEntity userProgress =
+                userBookProgressRepository.findByUserIdAndBookId(user.getId(), bookId)
+                        .orElse(new UserBookProgressEntity());
 
         // Fetch file-level progress for the book (most recent across all files)
         UserBookFileProgressEntity fileProgress = readingProgressService
                 .fetchUserFileProgress(user.getId(), Set.of(bookId))
                 .get(bookId);
 
-        Book book = bookMapper.toBook(bookEntity);
-        book.setShelves(bookDomainService.filterShelvesForUser(book.getShelves(), user.getId()));
-        readingProgressService.enrichBookWithProgress(book, userProgress, fileProgress);
+        Book book = bookAssembler.assemble(
+                bookEntity,
+                user.getId(),
+                userProgress,
+                fileProgress
+        );
 
         if (!withDescription) {
             book.getMetadata().setDescription(null);
@@ -136,6 +154,7 @@ public class BookService {
 
         return book;
     }
+
     
     public BookViewerSettings getBookViewerSetting(long bookId, long bookFileId) {
         BookEntity bookEntity = bookRepository.findByIdWithBookFiles(bookId)

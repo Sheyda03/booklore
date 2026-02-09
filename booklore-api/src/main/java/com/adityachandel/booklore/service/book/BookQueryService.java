@@ -61,4 +61,11 @@ public class BookQueryService {
 
         return dto;
     }
+    public List<BookEntity> getAllBookEntities(boolean includeDescription) {
+        return bookRepository.findAllWithMetadata();
+    }
+
+    public List<BookEntity> getAllBookEntitiesByLibraryIds(Set<Long> libraryIds) {
+        return bookRepository.findAllWithMetadataByLibraryIds(libraryIds);
+    }
 }
