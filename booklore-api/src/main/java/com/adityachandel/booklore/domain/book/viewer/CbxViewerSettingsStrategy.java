@@ -4,6 +4,7 @@ import org.springframework.stereotype.Service;
 import lombok.RequiredArgsConstructor;
 import com.adityachandel.booklore.domain.book.viewer.BookViewerSettingsStrategy;
 import com.adityachandel.booklore.model.entity.BookEntity;
+import com.adityachandel.booklore.model.entity.CbxViewerPreferencesEntity;
 import com.adityachandel.booklore.model.enums.BookFileType;
 import com.adityachandel.booklore.model.dto.BookViewerSettings;
 import com.adityachandel.booklore.model.dto.CbxViewerPreferences;
@@ -43,7 +44,28 @@ public class CbxViewerSettingsStrategy implements BookViewerSettingsStrategy {
 
     @Override
     public void updateSettings(BookEntity book, Long userId, BookViewerSettings settings) {
-        
+        if (settings.getCbxSettings() == null) return;
+
+        long bookId = book.getId();
+
+        CbxViewerPreferencesEntity prefs = cbxViewerPreferencesRepository
+                .findByBookIdAndUserId(bookId, userId)
+                .orElseGet(() -> cbxViewerPreferencesRepository.save(
+                        CbxViewerPreferencesEntity.builder()
+                                .bookId(bookId)
+                                .userId(userId)
+                                .build()
+                ));
+
+        CbxViewerPreferences cbxSettings = settings.getCbxSettings();
+
+        prefs.setPageSpread(cbxSettings.getPageSpread());
+        prefs.setPageViewMode(cbxSettings.getPageViewMode());
+        prefs.setFitMode(cbxSettings.getFitMode());
+        prefs.setScrollMode(cbxSettings.getScrollMode());
+        prefs.setBackgroundColor(cbxSettings.getBackgroundColor());
+
+        cbxViewerPreferencesRepository.save(prefs);
     }
 }
 
