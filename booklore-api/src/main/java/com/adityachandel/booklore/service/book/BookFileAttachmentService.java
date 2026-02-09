@@ -22,6 +22,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.util.Set;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -42,7 +43,7 @@ public class BookFileAttachmentService {
     private final MonitoringRegistrationService monitoringRegistrationService;
     private final FileMoveHelper fileMoveHelper;
     private final BookMapper bookMapper;
-    private final BookService bookService;
+    private final BookFileCleanupService bookFileCleanupService;
 
     @Transactional
     public Book attachBookFiles(Long targetBookId, List<Long> sourceBookIds, boolean deleteSourceBooks) {
@@ -318,7 +319,7 @@ public class BookFileAttachmentService {
                     .collect(Collectors.toSet());
 
             for (Path sourceDir : sourceDirectoriesToCleanup) {
-                bookService.deleteEmptyParentDirsUpToLibraryFolders(sourceDir, libraryRoots);
+                bookFileCleanupService.deleteEmptyParentDirsUpToLibraryFolders(sourceDir, libraryRoots);
             }
         } finally {
             // Re-register paths for monitoring (only if they still exist)

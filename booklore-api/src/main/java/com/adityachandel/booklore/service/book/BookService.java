@@ -2,7 +2,6 @@ package com.adityachandel.booklore.service.book;
 
 import com.adityachandel.booklore.domain.book.viewer.BookViewerSettingsResolver;
 import com.adityachandel.booklore.domain.book.BookDomainService;
-import com.adityachandel.booklore.domain.book.viewer.BookViewerSettingsResolver;
 import com.adityachandel.booklore.config.security.service.AuthenticationService;
 import com.adityachandel.booklore.exception.ApiError;
 import com.adityachandel.booklore.mapper.BookMapper;
@@ -12,13 +11,10 @@ import com.adityachandel.booklore.model.dto.response.BookDeletionResponse;
 import com.adityachandel.booklore.model.dto.response.BookStatusUpdateResponse;
 import com.adityachandel.booklore.model.entity.BookEntity;
 import com.adityachandel.booklore.model.entity.BookFileEntity;
-import com.adityachandel.booklore.model.entity.LibraryPathEntity;
 import com.adityachandel.booklore.model.entity.UserBookFileProgressEntity;
 import com.adityachandel.booklore.model.entity.UserBookProgressEntity;
 import com.adityachandel.booklore.model.enums.BookFileType;
-import com.adityachandel.booklore.model.enums.BookFileType;
 import com.adityachandel.booklore.repository.*;
-import com.adityachandel.booklore.service.monitoring.MonitoringRegistrationService;
 import com.adityachandel.booklore.service.progress.ReadingProgressService;
 import com.adityachandel.booklore.util.FileService;
 import com.adityachandel.booklore.util.FileUtils;
@@ -35,7 +31,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.io.File;
 import java.io.FileInputStream;
 import java.io.IOException;
 import java.net.MalformedURLException;
@@ -52,10 +47,6 @@ public class BookService {
     private final BookViewerSettingsResolver bookViewerSettingsResolver;
     private final BookDomainService bookDomainService;
     private final BookRepository bookRepository;
-    private final BookFileRepository bookFileRepository;
-    private final PdfViewerPreferencesRepository pdfViewerPreferencesRepository;
-    private final CbxViewerPreferencesRepository cbxViewerPreferencesRepository;
-    private final NewPdfViewerPreferencesRepository newPdfViewerPreferencesRepository;
     private final FileService fileService;
     private final BookMapper bookMapper;
     private final UserBookProgressRepository userBookProgressRepository;
@@ -63,9 +54,8 @@ public class BookService {
     private final BookQueryService bookQueryService;
     private final ReadingProgressService readingProgressService;
     private final BookDownloadService bookDownloadService;
-    private final MonitoringRegistrationService monitoringRegistrationService;
     private final BookUpdateService bookUpdateService;
-    private final EbookViewerPreferenceRepository ebookViewerPreferencesRepository;
+    private final BookFileCleanupService bookFileCleanupService;
 
 
     public List<Book> getBookDTOs(boolean includeDescription) {
@@ -241,127 +231,23 @@ public class BookService {
 
     @Transactional
     public ResponseEntity<BookDeletionResponse> deleteBooks(Set<Long> ids) {
+
         List<BookEntity> books = bookQueryService.findAllWithMetadataByIds(ids);
         List<Long> failedFileDeletions = new ArrayList<>();
+
         for (BookEntity book : books) {
-            for (BookFileEntity bookFile : book.getBookFiles()) {
-                Path fullFilePath = bookFile.getFullFilePath();
-                try {
-                    if (Files.exists(fullFilePath)) {
-                        try {
-                            monitoringRegistrationService.unregisterSpecificPath(fullFilePath.getParent());
-                        } catch (Exception ex) {
-                            log.warn("Failed to unregister monitoring for path: {}", fullFilePath.getParent(), ex);
-                        }
-
-                        // Handle folder-based audiobooks (delete directory recursively)
-                        if (bookFile.isFolderBased() && Files.isDirectory(fullFilePath)) {
-                            deleteDirectoryRecursively(fullFilePath);
-                            log.info("Deleted folder-based audiobook: {}", fullFilePath);
-                        } else {
-                            Files.delete(fullFilePath);
-                            log.info("Deleted book file: {}", fullFilePath);
-                        }
-
-                        Set<Path> libraryRoots = book.getLibrary().getLibraryPaths().stream()
-                                .map(LibraryPathEntity::getPath)
-                                .map(Paths::get)
-                                .map(Path::normalize)
-                                .collect(Collectors.toSet());
-
-                        deleteEmptyParentDirsUpToLibraryFolders(fullFilePath.getParent(), libraryRoots);
-                    }
-                } catch (IOException e) {
-                    log.warn("Failed to delete book file: {}", fullFilePath, e);
-                    failedFileDeletions.add(book.getId());
-                } finally {
-                    monitoringRegistrationService.registerSpecificPath(fullFilePath.getParent(), book.getLibrary().getId());
-                }
-            }
+            
+            bookFileCleanupService.cleanupAfterBookDeletion(book, failedFileDeletions);
         }
 
         bookRepository.deleteAll(books);
-        BookDeletionResponse response = new BookDeletionResponse(ids, failedFileDeletions);
+
+        BookDeletionResponse response =
+                new BookDeletionResponse(ids, failedFileDeletions);
+
         return failedFileDeletions.isEmpty()
                 ? ResponseEntity.ok(response)
                 : ResponseEntity.status(HttpStatus.MULTI_STATUS).body(response);
     }
-
-    private void deleteDirectoryRecursively(Path path) throws IOException {
-        if (!Files.exists(path)) return;
-
-        try (var walk = Files.walk(path)) {
-            walk.sorted(java.util.Comparator.reverseOrder())
-                    .map(Path::toFile)
-                    .forEach(java.io.File::delete);
-        }
-    }
-
-    public void deleteEmptyParentDirsUpToLibraryFolders(Path currentDir, Set<Path> libraryRoots) {
-        Path dir = currentDir;
-        Set<String> ignoredFilenames = Set.of(".DS_Store", "Thumbs.db");
-        dir = dir.toAbsolutePath().normalize();
-
-        Set<Path> normalizedRoots = new HashSet<>();
-        for (Path root : libraryRoots) {
-            normalizedRoots.add(root.toAbsolutePath().normalize());
-        }
-
-        while (dir != null) {
-            boolean isLibraryRoot = false;
-            for (Path root : normalizedRoots) {
-                try {
-                    if (Files.isSameFile(root, dir)) {
-                        isLibraryRoot = true;
-                        break;
-                    }
-                } catch (IOException e) {
-                    log.warn("Failed to compare paths: {} and {}", root, dir);
-                }
-            }
-
-            if (isLibraryRoot) {
-                log.debug("Reached library root: {}. Stopping cleanup.", dir);
-                break;
-            }
-
-            File[] files = dir.toFile().listFiles();
-            if (files == null) {
-                log.warn("Cannot read directory: {}. Stopping cleanup.", dir);
-                break;
-            }
-
-            boolean hasImportantFiles = false;
-            for (File file : files) {
-                if (!ignoredFilenames.contains(file.getName())) {
-                    hasImportantFiles = true;
-                    break;
-                }
-            }
-
-            if (!hasImportantFiles) {
-                for (File file : files) {
-                    try {
-                        Files.delete(file.toPath());
-                        log.info("Deleted ignored file: {}", file.getAbsolutePath());
-                    } catch (IOException e) {
-                        log.warn("Failed to delete ignored file: {}", file.getAbsolutePath());
-                    }
-                }
-                try {
-                    Files.delete(dir);
-                    log.info("Deleted empty directory: {}", dir);
-                } catch (IOException e) {
-                    log.warn("Failed to delete directory: {}", dir, e);
-                    break;
-                }
-                dir = dir.getParent();
-            } else {                
-                log.debug("Directory {} contains important files. Stopping cleanup.", dir);
-                break;
-            }
-        }
-    }
-
 }
 
